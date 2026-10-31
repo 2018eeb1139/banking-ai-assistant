@@ -42,9 +42,12 @@ class AgentResponse(BaseModel):
                 "raise_request outcome requires a successful service request result"
             )
 
-        if self.outcome != Outcome.RAISE_REQUEST and self.service_request is not None:
+        if (
+            self.outcome not in {Outcome.RAISE_REQUEST, Outcome.REFUSE}
+            and self.service_request is not None
+        ):
             raise ValueError(
-                "service request result is only valid for raise_request outcome"
+                "service request result is only valid for raise_request or refuse outcomes"
             )
 
         if (

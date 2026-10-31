@@ -7,6 +7,7 @@ from evaluation.evaluator import (
     run_evaluation,
 )
 from app.schemas.response import AgentResponse, Outcome
+from app.validation.citation_validator import CitationValidationError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,15 @@ def test_loads_supplied_seed_and_at_least_fifteen_additional_cases() -> None:
     assert len(cases) == 27
     assert sum(case.case_id.startswith("EVX-") for case in cases) >= 15
     assert cases[0].case_id == "EV-001"
+    seed_dispute = next(case for case in cases if case.case_id == "EV-002")
+    assert seed_dispute.grounding_docs == ("POL-CRD-001", "POL-SVC-005")
+    dispute = next(case for case in cases if case.case_id == "EV-007")
+    assert dispute.grounding_docs == ("POL-SVC-005", "POL-SVC-006")
+    thin_file = next(case for case in cases if case.case_id == "EV-005")
+    assert thin_file.expected_outcome == "raise_request"
+    timeline = next(case for case in cases if case.case_id == "EVX-005")
+    assert timeline.expected_outcome == "answer"
+    assert not timeline.expected_account_access
 
 
 def test_evaluator_checks_outcome_intent_and_account_usage() -> None:
@@ -94,6 +104,51 @@ def test_evaluator_checks_error_handling_and_request_queue() -> None:
     assert checks["account_usage"] is True
 
 
+def test_evaluator_validates_routed_refusal_service_action() -> None:
+    case = EvaluationCase(
+        case_id="EV-ROUTED-REFUSAL",
+        customer_id="CUST-2000",
+        question="Can I add travel insurance to my card?",
+        expected_outcome="refuse",
+        expected_intent="unsupported",
+        expected_queue="GENERAL",
+        expected_sla_hours=8,
+    )
+    response = AgentResponse(
+        outcome=Outcome.REFUSE,
+        customer_id="CUST-2000",
+        intent="unsupported",
+        message="I cannot answer that, so I routed it for review.",
+        claims=[],
+        citations=[],
+        service_request={
+            "request_id": "SR-789",
+            "queue": "GENERAL",
+            "sla_hours": 8,
+        },
+    )
+
+    report = run_evaluation(
+        [case],
+        lambda _: {
+            "final_response": response,
+            "intent": "unsupported",
+            "service_request": {
+                "request_id": "SR-789",
+                "queue": "GENERAL",
+                "sla_hours": 8,
+            },
+            "retrieved_policy": [],
+        },
+    )
+
+    result = report["results"][0]
+    assert result["checks"]["service_action_truth"] is True
+    assert result["checks"]["service_queue"] is True
+    assert result["checks"]["service_sla"] is True
+    assert result["passed"] is True
+
+
 def test_runner_records_unexpected_case_error_and_continues() -> None:
     cases = [
         EvaluationCase(
@@ -133,4 +188,26 @@ def test_runner_records_unexpected_case_error_and_continues() -> None:
 
     assert report["case_count"] == 2
     assert report["results"][0]["error_code"] == "runtime_exception:RuntimeError"
+    assert report["results"][0]["error_detail"] is None
     assert "private diagnostic detail" not in str(report)
+
+
+def test_runner_records_safe_citation_validation_detail() -> None:
+    case = EvaluationCase(
+        case_id="EV-CITATION-ERROR",
+        customer_id="CUST-2000",
+        question="A citation validation failure",
+        expected_outcome="answer",
+        expected_intent="general",
+    )
+
+    def fail(_: EvaluationCase) -> dict[str, Any]:
+        raise CitationValidationError(
+            "Policy citation does not match retrieved evidence"
+        )
+
+    report = run_evaluation([case], fail)
+
+    result = report["results"][0]
+    assert result["error_code"] == "runtime_exception:CitationValidationError"
+    assert result["error_detail"] == "Policy citation does not match retrieved evidence"

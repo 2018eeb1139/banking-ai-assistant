@@ -5,7 +5,7 @@ from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agent.state import Intent
-from app.policy.rules import LimitDecisionStatus
+from app.policy.rules import LimitDecision, LimitDecisionStatus
 from app.retrieval.hybrid_search import SearchResult
 from app.schemas.evidence import Citation, Claim, SourceType
 from app.schemas.response import AgentResponse, Outcome, ServiceRequestResult
@@ -104,7 +104,7 @@ def _decision_response(
 def _service_request_response(state: Mapping[str, Any]) -> AgentResponse:
     service_request = state["service_request"]
     result = ServiceRequestResult.model_validate(service_request)
-    citation = _service_request_citation(service_request)
+    citations: list[Citation] = []
 
     if state.get("intent") == Intent.LIMIT_INCREASE.value:
         message = (
@@ -112,6 +112,46 @@ def _service_request_response(state: Mapping[str, Any]) -> AgentResponse:
             f"request {result.request_id} was routed to {result.queue}; the "
             f"stated service level is {result.sla_hours} hours."
         )
+        decision = state.get("policy_decision")
+        account_state = state.get("account_state")
+        if (
+            isinstance(decision, LimitDecision)
+            and "thin_file" in decision.policy_flags
+            and decision.max_permitted_limit is not None
+            and isinstance(account_state, dict)
+            and "current_limit" in account_state
+        ):
+            policy_result = next(
+                (
+                    item
+                    for item in state.get("retrieved_policy", [])
+                    if item.chunk.is_authoritative
+                    and item.chunk.document_id == "POL-CRD-003"
+                    and "1.25x" in item.chunk.text.lower()
+                ),
+                None,
+            )
+            if policy_result is not None:
+                message = (
+                    "A limited credit history means any increase is capped "
+                    "at 1.25 times the current limit and must be reviewed by "
+                    "a credit officer. Based on your current limit, the "
+                    f"maximum considered is INR "
+                    f"{decision.max_permitted_limit:,}; this is not an "
+                    f"approval. Service request {result.request_id} was "
+                    f"routed to {result.queue}; the stated service level is "
+                    f"{result.sla_hours} hours."
+                )
+                citations.extend(
+                    [
+                        _policy_citation(policy_result),
+                        _account_citation(
+                            state["customer_id"],
+                            account_state,
+                            "current_limit",
+                        ),
+                    ]
+                )
     elif state.get("intent") == Intent.UNSUPPORTED.value:
         message = (
             f"I can’t answer this from the approved information available. "
@@ -125,18 +165,20 @@ def _service_request_response(state: Mapping[str, Any]) -> AgentResponse:
             f"{result.sla_hours} hours."
         )
 
-    claim = Claim(
-        text=message,
-        citations=[citation],
-    )
+    citations.append(_service_request_citation(service_request))
+    claim = Claim(text=message, citations=citations)
 
     response = AgentResponse(
-        outcome=Outcome.RAISE_REQUEST,
+        outcome=(
+            Outcome.REFUSE
+            if state.get("intent") == Intent.UNSUPPORTED.value
+            else Outcome.RAISE_REQUEST
+        ),
         customer_id=state["customer_id"],
         intent=state.get("intent", Intent.GENERAL.value),
         message=message,
         claims=[claim],
-        citations=[citation],
+        citations=citations,
         service_request=result,
     )
     return _validate_or_review(response, state)
@@ -165,6 +207,9 @@ def _review_response(state: Mapping[str, Any]) -> AgentResponse:
 
 
 def _determine_outcome(state: Mapping[str, Any]) -> Outcome:
+    if state.get("prompt_injection_detected"):
+        return Outcome.REFUSE
+
     if state.get("service_request") is not None:
         return Outcome.RAISE_REQUEST
 
@@ -270,7 +315,7 @@ def _approved_decline_response(
         "AA02": ["debt_burden_ratio_after_increase_percent"],
         "AA04": ["open_dispute"],
         "AA05": ["last_limit_increase_date"],
-        "AA06": ["kyc_last_done", "kyc_risk_band"],
+        "AA06": ["kyc_last_done"],
     }
 
     if reason_code not in approved_messages:

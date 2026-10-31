@@ -28,6 +28,8 @@ class IntentClassification(BaseModel):
 
     intent: Intent
     proposed_limit: int | None = Field(default=None, gt=0)
+    account_data_required: bool | None = None
+    prompt_injection_detected: bool = False
 
 
 class AgentState(TypedDict, total=False):
@@ -37,6 +39,8 @@ class AgentState(TypedDict, total=False):
 
     intent: str
     proposed_limit: int | None
+    account_data_required: bool | None
+    prompt_injection_detected: bool
 
     retrieved_policy: list[SearchResult]
     evidence_sufficient: bool

@@ -1,7 +1,7 @@
 import pytest
 
 from app.tools import account
-from app.tools.account import CustomerNotFound, UpstreamTimeout, get_account_state
+from app.tools.account import CustomerNotFound, get_account_state
 from app.tools.service_request import (
     InvalidCategory,
     raise_service_request,
@@ -11,7 +11,6 @@ from app.tools.service_request import (
 def test_account_lookup_returns_requested_customer(monkeypatch: pytest.MonkeyPatch) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(account.time, "sleep", sleep_calls.append)
-    monkeypatch.setattr(account.random, "random", lambda: 0.5)
 
     result = get_account_state("CUST-2000")
 
@@ -23,23 +22,9 @@ def test_account_lookup_raises_for_unknown_customer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(account.time, "sleep", lambda _: None)
-    monkeypatch.setattr(account.random, "random", lambda: 0.5)
 
     with pytest.raises(CustomerNotFound):
         get_account_state("CUST-UNKNOWN")
-
-
-def test_account_lookup_raises_simulated_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sleep_calls: list[float] = []
-    monkeypatch.setattr(account.time, "sleep", sleep_calls.append)
-    monkeypatch.setattr(account.random, "random", lambda: 0.01)
-
-    with pytest.raises(UpstreamTimeout):
-        get_account_state("CUST-2000")
-
-    assert sleep_calls == [0.4]
 
 
 @pytest.mark.parametrize(

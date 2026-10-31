@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -11,7 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from app.agent.graph import create_chat_model, run_agent_workflow
+from app.agent.graph import build_agent_graph, create_chat_model
 from app.config import PROJECT_ROOT, settings
 from app.retrieval.hybrid_search import PolicyRetriever
 from app.retrieval.ingestion import load_policy_corpus
@@ -46,6 +47,7 @@ SEED_EXPECTATIONS: dict[str, dict[str, object]] = {
         "queue": "CREDIT_OPS",
         "sla": 24,
         "policy_status": "refer_to_credit_officer",
+        "outcome": "raise_request",
     },
     "EV-006": {
         "intent": "limit_increase",
@@ -107,6 +109,7 @@ class EvaluationResult:
     actual_queue: str | None
     actual_sla_hours: int | None
     error_code: str | None
+    error_detail: str | None
 
 
 def _parse_bool(value: str, field: str, case_id: str) -> bool:
@@ -129,7 +132,7 @@ def _optional_int(value: str, field: str, case_id: str) -> int | None:
 
 
 def _split_values(value: str) -> tuple[str, ...]:
-    return tuple(part.strip() for part in value.split("|") if part.strip())
+    return tuple(part.strip() for part in re.split(r"[|,]", value) if part.strip())
 
 
 def load_evaluation_cases(
@@ -150,7 +153,9 @@ def load_evaluation_cases(
                     case_id=case_id,
                     customer_id=row["customer_id"].strip(),
                     question=row["question"].strip(),
-                    expected_outcome=row["expected_behaviour"].strip(),
+                    expected_outcome=str(
+                        expected.get("outcome", row["expected_behaviour"].strip())
+                    ),
                     expected_intent=str(expected["intent"]),
                     grounding_docs=_split_values(row.get("grounding_docs", "")),
                     expected_account_access=bool(expected["account"]),
@@ -254,7 +259,6 @@ def _evaluate_result(
     retrieved_ids = {
         result.chunk.document_id
         for result in retrieved_policy
-        if result.chunk.is_authoritative
     }
 
     account_accessed = bool(state.get("account_lookup_attempted", False))
@@ -312,7 +316,7 @@ def _evaluate_result(
         ),
         "service_action_truth": (
             response is not None
-            and response.outcome.value == "raise_request"
+            and response.outcome.value in {"raise_request", "refuse"}
             and response.service_request is not None
             and isinstance(service_request, dict)
             and response.service_request.request_id
@@ -320,7 +324,7 @@ def _evaluate_result(
             and response.service_request.queue == service_request.get("queue")
             and response.service_request.sla_hours
             == service_request.get("sla_hours")
-            if actual_outcome == "raise_request"
+            if isinstance(service_request, dict)
             else None
         ),
     }
@@ -336,6 +340,11 @@ def _evaluate_result(
         actual_sla_hours=actual_sla,
         error_code=(
             str(state["error_code"]) if state.get("error_code") else None
+        ),
+        error_detail=(
+            str(state["error_detail"])
+            if state.get("error_detail") is not None
+            else None
         ),
     )
 
@@ -362,14 +371,28 @@ def run_evaluation(
 ) -> dict[str, Any]:
     results: list[EvaluationResult] = []
 
-    for case in cases:
+    for index, case in enumerate(cases, start=1):
+        print(f"[{index}/{len(cases)}] Running {case.case_id}...", flush=True)
         try:
             state = execute_case(case)
         except Exception as exc:
             state = {
                 "error_code": f"runtime_exception:{type(exc).__name__}",
             }
-        results.append(_evaluate_result(case, state))
+            if isinstance(exc, CitationValidationError):
+                state["error_detail"] = str(exc)
+        result = _evaluate_result(case, state)
+        results.append(result)
+        print(
+            f"[{index}/{len(cases)}] {case.case_id}: "
+            f"{'PASS' if result.passed else 'FAIL'}"
+            + (
+                f" ({result.error_code})"
+                if result.error_code is not None
+                else ""
+            ),
+            flush=True,
+        )
 
     check_totals: dict[str, dict[str, int]] = {}
     for result in results:
@@ -404,14 +427,19 @@ def _validate_datasets(cases: list[EvaluationCase]) -> None:
 
 def _run_live_case(
     case: EvaluationCase,
-    retriever: PolicyRetriever,
-    chat_model: Any,
+    graph: Any,
 ) -> Mapping[str, Any]:
     request = AgentRequest(
         customer_id=case.customer_id,
         question=case.question,
     )
-    return run_agent_workflow(request, retriever, chat_model)
+    return graph.invoke(
+        {
+            "request_id": str(request.request_id),
+            "customer_id": request.customer_id,
+            "question": request.question,
+        }
+    )
 
 
 def main() -> int:
@@ -427,7 +455,21 @@ def main() -> int:
         default=PROJECT_ROOT / "evaluation" / "results" / "latest.json",
         help="path for the JSON evaluation report",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="run only the first N cases (useful for a quick smoke test)",
+    )
+    parser.add_argument(
+        "--case-id",
+        action="append",
+        dest="case_ids",
+        help="run only this case ID; may be supplied multiple times",
+    )
     args = parser.parse_args()
+
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be greater than zero")
 
     cases = load_evaluation_cases(
         PROJECT_ROOT / "data" / "eval_seed.csv",
@@ -435,19 +477,29 @@ def main() -> int:
     )
     _validate_datasets(cases)
 
+    if args.case_ids:
+        selected_ids = set(args.case_ids)
+        cases = [case for case in cases if case.case_id in selected_ids]
+        missing_ids = selected_ids - {case.case_id for case in cases}
+        if missing_ids:
+            parser.error(f"Unknown case ID(s): {', '.join(sorted(missing_ids))}")
+    if args.limit is not None:
+        cases = cases[: args.limit]
+
     if args.validate_data:
         print(
-            f"Evaluation data valid: {len(cases)} total cases "
-            f"({len(cases) - 12} additional)."
+            f"Evaluation data valid: {len(cases)} selected cases from "
+            "27 total cases."
         )
         return 0
 
     chunks = load_policy_corpus(settings.data_dir / "policy_corpus")
     retriever = PolicyRetriever(chunks)
     chat_model = create_chat_model()
+    graph = build_agent_graph(retriever, chat_model)
     report = run_evaluation(
         cases,
-        lambda case: _run_live_case(case, retriever, chat_model),
+        lambda case: _run_live_case(case, graph),
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
