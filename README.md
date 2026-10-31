@@ -104,6 +104,31 @@ If Groq rate-limits a request, `/chat` returns HTTP `503` with a retry message.
 Wait and retry; repeated calls can continue to hit the account's rate or usage
 limit.
 
+## Run the Streamlit chat UI
+
+Start the FastAPI backend in one terminal:
+
+```bash
+uv run uvicorn app.main:app --reload
+```
+
+In another terminal, launch the Streamlit interface:
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+The UI connects to `http://127.0.0.1:8000` by default. To use a different
+backend URL, set `BANKING_API_URL` before starting Streamlit:
+
+```bash
+BANKING_API_URL=http://127.0.0.1:8001 uv run streamlit run streamlit_app.py
+```
+
+Choose a supplied synthetic customer ID in the sidebar, then ask a question.
+Conversation history is kept in the Streamlit session and can be cleared from
+the sidebar.
+
 ## Run tests
 
 Run the local test suite without calling Groq:
