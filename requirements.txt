@@ -1,3 +1,15 @@
 python-dotenv
 pydantic
 pydantic-settings
+faiss-cpu
+fastapi
+langchain-community
+langchain-groq
+langchain-huggingface
+langgraph
+rank-bm25
+requests
+sentence-transformers
+streamlit
+uvicorn[standard]
+# pytest as dev dependency
