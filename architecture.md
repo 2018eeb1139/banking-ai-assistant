@@ -34,26 +34,7 @@ decisions, service routing, and citation-checked responses.
                        v
                 AgentResponse
 
-```mermaid
-flowchart TD
-    Client["Customer or API client"] --> API["FastAPI"]
-    API --> Agent["LangGraph agent"]
-    Agent --> Groq["Groq chat model"]
-    Agent --> Retrieval["Hybrid policy search"]
-    Policies[("Policy Markdown files")] --> Retrieval
-    Agent --> Rules["Deterministic credit rules"]
-    Agent --> AccountTool["Account lookup tool"]
-    Accounts[("Synthetic accounts JSON")] --> AccountTool
-    Agent --> ServiceTool["Service request tool"]
-    Agent --> Response["Response and citation validation"]
-    Groq --> Response
-    Retrieval --> Response
-    Rules --> Response
-    AccountTool --> Response
-    ServiceTool --> Response
-    Response --> API
-    API --> Client
-```
+### LangGraph Execution Flow
 
 ```mermaid
 flowchart TD
