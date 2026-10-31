@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class SourceType(str, Enum):
     POLICY = "policy"
     ACCOUNT = "account"
+    SERVICE_REQUEST = "service_request"
 
 
 class Citation(BaseModel):
@@ -25,8 +26,25 @@ class Citation(BaseModel):
                 raise ValueError(
                     "policy citations require a document version and section"
                 )
-        elif not self.account_field:
-            raise ValueError("account citations require an account field")
+            if self.account_field is not None:
+                raise ValueError("policy citations cannot include an account field")
+
+        elif self.source_type == SourceType.ACCOUNT:
+            if not self.account_field:
+                raise ValueError("account citations require an account field")
+            if self.document_version is not None or self.section is not None:
+                raise ValueError(
+                    "account citations cannot include policy document details"
+                )
+
+        elif (
+            self.document_version is not None
+            or self.section is not None
+            or self.account_field is not None
+        ):
+            raise ValueError(
+                "service-request citations cannot include policy or account details"
+            )
 
         return self
 

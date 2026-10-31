@@ -1,10 +1,12 @@
 from typing import Any
 
-from langchain_groq import ChatGroq
 from langchain_core.language_models import BaseChatModel
+from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
 from pydantic import SecretStr, ValidationError
 
+from app.agent.response import generate_agent_response
+from app.agent.state import AgentState, Intent, IntentClassification
 from app.config import settings
 from app.policy.rules import (
     LimitDecisionStatus,
@@ -12,7 +14,6 @@ from app.policy.rules import (
 )
 from app.retrieval.hybrid_search import PolicyRetriever
 from app.schemas.request import AgentRequest
-from app.agent.state import AgentState, Intent, IntentClassification
 from app.tools.account import CustomerNotFound, UpstreamTimeout, get_account_state
 from app.tools.service_request import InvalidCategory, raise_service_request
 
@@ -76,7 +77,8 @@ def build_agent_graph(
     retriever: PolicyRetriever,
     chat_model: BaseChatModel | None = None,
 ):
-    structured_classifier = (chat_model or _make_chat_model()).with_structured_output(
+    effective_chat_model = chat_model or _make_chat_model()
+    structured_classifier = effective_chat_model.with_structured_output(
         IntentClassification
     )
 
@@ -259,6 +261,14 @@ def build_agent_graph(
 
         return "end"
 
+    def generate_response(state: AgentState) -> dict[str, Any]:
+        return {
+            "final_response": generate_agent_response(
+                state,
+                effective_chat_model,
+            )
+        }
+
     graph = StateGraph(AgentState)
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("retrieve_policy", retrieve_policy)
@@ -266,12 +276,13 @@ def build_agent_graph(
     graph.add_node("get_account", get_account)
     graph.add_node("evaluate_policy", evaluate_policy)
     graph.add_node("route_request", route_request)
+    graph.add_node("generate_response", generate_response)
 
     graph.add_edge(START, "classify_intent")
     graph.add_conditional_edges(
         "classify_intent",
         after_classification,
-        {"retrieve": "retrieve_policy", "end": END},
+        {"retrieve": "retrieve_policy", "end": "generate_response"},
     )
     graph.add_edge("retrieve_policy", "assess_evidence")
     graph.add_conditional_edges(
@@ -281,20 +292,21 @@ def build_agent_graph(
             "account": "get_account",
             "evaluate": "evaluate_policy",
             "route": "route_request",
-            "end": END,
+            "end": "generate_response",
         },
     )
     graph.add_conditional_edges(
         "get_account",
         after_account,
-        {"evaluate": "evaluate_policy", "end": END},
+        {"evaluate": "evaluate_policy", "end": "generate_response"},
     )
     graph.add_conditional_edges(
         "evaluate_policy",
         after_evaluation,
-        {"route": "route_request", "end": END},
+        {"route": "route_request", "end": "generate_response"},
     )
-    graph.add_edge("route_request", END)
+    graph.add_edge("route_request", "generate_response")
+    graph.add_edge("generate_response", END)
 
     return graph.compile()
 

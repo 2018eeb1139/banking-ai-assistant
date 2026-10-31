@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.policy.rules import LimitDecision
+from app.schemas.response import AgentResponse
 from app.retrieval.hybrid_search import SearchResult
 
 
@@ -46,4 +47,5 @@ class AgentState(TypedDict, total=False):
 
     service_request: dict[str, str | int]
     workflow_status: str
+    final_response: AgentResponse
     error_code: str | None
