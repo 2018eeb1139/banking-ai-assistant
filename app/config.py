@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     groq_api_key: SecretStr | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "qwen/qwen3.8-27b"
     data_dir: Path = PROJECT_ROOT / "data"
 
 

@@ -61,7 +61,7 @@ SERVICE_CATEGORY_BY_INTENT: dict[Intent, str] = {
 }
 
 
-def _make_chat_model() -> BaseChatModel:
+def create_chat_model() -> BaseChatModel:
     api_key: SecretStr | None = settings.groq_api_key
     if api_key is None or not api_key.get_secret_value():
         raise ValueError("GROQ_API_KEY must be configured before running the agent")
@@ -77,7 +77,7 @@ def build_agent_graph(
     retriever: PolicyRetriever,
     chat_model: BaseChatModel | None = None,
 ):
-    effective_chat_model = chat_model or _make_chat_model()
+    effective_chat_model = chat_model or create_chat_model()
     structured_classifier = effective_chat_model.with_structured_output(
         IntentClassification
     )
@@ -149,18 +149,23 @@ def build_agent_graph(
             account = get_account_state(state["customer_id"])
         except UpstreamTimeout:
             return {
+                "account_lookup_attempted": True,
                 "workflow_status": "needs_review",
                 "error_code": "account_timeout",
                 "missing_information": ["reliable account data"],
             }
         except CustomerNotFound:
             return {
+                "account_lookup_attempted": True,
                 "workflow_status": "needs_review",
                 "error_code": "customer_not_found",
                 "missing_information": ["a valid customer account"],
             }
 
-        return {"account_state": account}
+        return {
+            "account_lookup_attempted": True,
+            "account_state": account,
+        }
 
     def evaluate_policy(state: AgentState) -> dict[str, Any]:
         intent = Intent(state["intent"])

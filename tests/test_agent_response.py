@@ -193,3 +193,32 @@ def test_graph_returns_response_when_classification_is_invalid(
 
     assert result["final_response"].outcome == Outcome.NEEDS_REVIEW
     assert result["error_code"] == "invalid_intent_classification"
+
+
+def test_graph_returns_review_after_account_timeout(monkeypatch: Any) -> None:
+    from app.agent import graph as agent_graph
+    from app.agent.graph import run_agent_workflow
+    from app.schemas.request import AgentRequest
+    from app.tools.account import UpstreamTimeout
+
+    def timeout(_: str) -> dict[str, Any]:
+        raise UpstreamTimeout("simulated timeout")
+
+    monkeypatch.setattr(agent_graph, "get_account_state", timeout)
+    model = FakeChatModel(
+        [{"intent": Intent.ACCOUNT_QUERY.value, "proposed_limit": None}]
+    )
+    request = AgentRequest(
+        customer_id="CUST-2000",
+        question="What is my card product?",
+    )
+
+    result = run_agent_workflow(
+        request,
+        EmptyRetriever(),  # type: ignore[arg-type]
+        model,  # type: ignore[arg-type]
+    )
+
+    assert result["account_lookup_attempted"] is True
+    assert result["error_code"] == "account_timeout"
+    assert result["final_response"].outcome == Outcome.NEEDS_REVIEW

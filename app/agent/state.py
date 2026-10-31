@@ -42,6 +42,7 @@ class AgentState(TypedDict, total=False):
     evidence_sufficient: bool
     missing_information: list[str]
 
+    account_lookup_attempted: bool
     account_state: dict[str, Any]
     policy_decision: LimitDecision | None
 
