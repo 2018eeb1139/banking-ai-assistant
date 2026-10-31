@@ -5,9 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "faiss-cpu>=1.15.1",
+    "langchain-community>=0.4.2",
+    "langchain-huggingface>=1.2.3",
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "python-dotenv>=1.2.4",
+    "rank-bm25>=0.2.2",
+    "sentence-transformers>=6.2.0",
 ]
 
 [dependency-groups]
