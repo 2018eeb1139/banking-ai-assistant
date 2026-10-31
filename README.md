@@ -5,10 +5,6 @@ LangChain hybrid retrieval, local FAISS, and deterministic credit-limit rules.
 The assistant grounds customer-facing answers in the supplied policy corpus,
 uses synthetic account records when needed, and validates policy citations.
 
-> **Scope:** This is an assignment/demo project, not a production banking
-> service. All supplied customer data is synthetic. Do not use it to make real
-> financial decisions or submit real customer information.
-
 ## Features
 
 - Classifies customer requests into supported intents.
@@ -78,7 +74,7 @@ curl http://127.0.0.1:8000/health
 Example response:
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 ### Send a customer question
@@ -91,11 +87,11 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 The request accepts:
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `customer_id` | Yes | Synthetic customer ID, up to 64 characters |
-| `question` | Yes | Customer question, up to 4,000 characters |
-| `request_id` | No | Optional UUID; generated automatically if omitted |
+| Field         | Required | Description                                       |
+| ------------- | -------- | ------------------------------------------------- |
+| `customer_id` | Yes      | Synthetic customer ID, up to 64 characters        |
+| `question`    | Yes      | Customer question, up to 4,000 characters         |
+| `request_id`  | No       | Optional UUID; generated automatically if omitted |
 
 The response follows the `AgentResponse` schema. It contains an `outcome`,
 `message`, `intent`, claims and citations, and—when applicable—a service request,
