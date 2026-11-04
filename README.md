@@ -129,6 +129,23 @@ Choose a supplied synthetic customer ID in the sidebar, then ask a question.
 Conversation history is kept in the Streamlit session and can be cleared from
 the sidebar.
 
+### Trace a request
+
+The Streamlit UI shows the generated request ID above each assistant response.
+Use it to follow the request across both terminal windows:
+
+- The Streamlit terminal logs request submission, the API status, and response
+  rendering.
+- The FastAPI terminal logs API receipt, intent classification, policy
+  retrieval, evidence checks, workflow routing, response generation, citation
+  validation, and the final outcome.
+
+For example, asking `What is the foreign currency markup?` should produce
+backend events for intent classification, retrieval of `POL-FEE-007`, evidence
+assessment, response drafting, citation validation, and an `answer` outcome.
+Logs include request IDs and document IDs, but do not print the question,
+account values, or API key.
+
 ## Run tests
 
 Run the local test suite without calling Groq:

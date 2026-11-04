@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from app.agent.response import generate_agent_response
@@ -335,7 +336,9 @@ class FeeRetriever:
 
 def test_general_policy_question_is_answered_without_account_lookup(
     monkeypatch: Any,
+    caplog: Any,
 ) -> None:
+    caplog.set_level(logging.INFO)
     from app.agent import graph as agent_graph
     from app.agent.graph import run_agent_workflow
     from app.schemas.request import AgentRequest
@@ -377,6 +380,12 @@ def test_general_policy_question_is_answered_without_account_lookup(
     assert result.get("account_lookup_attempted", False) is False
     assert result.get("service_request") is None
     assert retriever.include_non_authoritative is True
+    log_text = caplog.text
+    assert f"request_id={request.request_id}" in log_text
+    assert "step=intent_classification_started" in log_text
+    assert "step=policy_retrieval_completed" in log_text
+    assert "document_ids=POL-FEE-007" in log_text
+    assert "step=response_generation_completed outcome=answer" in log_text
 
 
 def test_annual_fee_threshold_does_not_fetch_account_data(

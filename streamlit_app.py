@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Any
 
@@ -8,6 +9,12 @@ from pydantic import ValidationError
 
 from app.schemas.request import AgentRequest
 from app.schemas.response import AgentResponse, Outcome
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("BANKING_API_URL", "http://127.0.0.1:8000").rstrip("/")
 CHAT_URL = f"{API_URL}/chat"
@@ -146,6 +153,8 @@ with st.sidebar:
 
 for item in st.session_state.messages:
     with st.chat_message(item["role"]):
+        if item.get("request_id"):
+            st.caption(f"Request ID: `{item['request_id']}`")
         if item["role"] == "assistant" and "response" in item:
             _render_response(item["response"])
         else:
@@ -161,6 +170,12 @@ if question:
         st.warning("Enter a customer ID in the sidebar before asking a question.")
     else:
         request = AgentRequest(customer_id=customer_id, question=question)
+        request_id = str(request.request_id)
+        logger.info(
+            "request_id=%s step=ui_request_started question_chars=%d",
+            request_id,
+            len(request.question),
+        )
         st.session_state.messages.append(
             {"role": "user", "content": request.question}
         )
@@ -168,6 +183,7 @@ if question:
             st.markdown(request.question)
 
         with st.chat_message("assistant"):
+            st.caption(f"Request ID: `{request_id}`")
             with st.spinner("Checking policies and preparing a response..."):
                 try:
                     api_response = requests.post(
@@ -175,17 +191,39 @@ if question:
                         json=request.model_dump(mode="json"),
                         timeout=REQUEST_TIMEOUT_SECONDS,
                     )
+                    logger.info(
+                        "request_id=%s step=ui_api_response_received status=%d",
+                        request_id,
+                        api_response.status_code,
+                    )
                     api_response.raise_for_status()
                     response = AgentResponse.model_validate(api_response.json())
                 except requests.Timeout:
+                    logger.warning(
+                        "request_id=%s step=ui_request_failed reason=timeout",
+                        request_id,
+                    )
                     error_message = (
                         "The assistant took too long to respond. Please try again."
                     )
                     st.error(error_message)
                     st.session_state.messages.append(
-                        {"role": "assistant", "content": error_message}
+                        {
+                            "role": "assistant",
+                            "content": error_message,
+                            "request_id": request_id,
+                        }
                     )
                 except requests.HTTPError as exc:
+                    logger.warning(
+                        "request_id=%s step=ui_request_failed reason=http_error status=%s",
+                        request_id,
+                        (
+                            exc.response.status_code
+                            if exc.response is not None
+                            else "unknown"
+                        ),
+                    )
                     try:
                         detail = exc.response.json().get("detail")
                     except (AttributeError, ValueError):
@@ -197,28 +235,57 @@ if question:
                     )
                     st.error(error_message)
                     st.session_state.messages.append(
-                        {"role": "assistant", "content": error_message}
+                        {
+                            "role": "assistant",
+                            "content": error_message,
+                            "request_id": request_id,
+                        }
                     )
                 except requests.RequestException:
+                    logger.warning(
+                        "request_id=%s step=ui_request_failed reason=connection_error",
+                        request_id,
+                    )
                     error_message = (
                         "Could not reach the assistant service. Check that the "
                         "FastAPI backend is running and try again."
                     )
                     st.error(error_message)
                     st.session_state.messages.append(
-                        {"role": "assistant", "content": error_message}
+                        {
+                            "role": "assistant",
+                            "content": error_message,
+                            "request_id": request_id,
+                        }
                     )
                 except ValidationError:
+                    logger.warning(
+                        "request_id=%s step=ui_request_failed reason=invalid_response",
+                        request_id,
+                    )
                     error_message = (
                         "The assistant service returned an unexpected response."
                     )
                     st.error(error_message)
                     st.session_state.messages.append(
-                        {"role": "assistant", "content": error_message}
+                        {
+                            "role": "assistant",
+                            "content": error_message,
+                            "request_id": request_id,
+                        }
                     )
                 else:
+                    logger.info(
+                        "request_id=%s step=ui_response_rendered outcome=%s",
+                        request_id,
+                        response.outcome.value,
+                    )
                     response_data = response.model_dump(mode="json")
                     _render_response(response_data)
                     st.session_state.messages.append(
-                        {"role": "assistant", "response": response_data}
+                        {
+                            "role": "assistant",
+                            "response": response_data,
+                            "request_id": request_id,
+                        }
                     )

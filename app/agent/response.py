@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Mapping
 
 from langchain_core.language_models import BaseChatModel
@@ -15,6 +16,8 @@ from app.validation.citation_validator import (
     format_account_evidence,
     validate_agent_response_citations,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DraftClaim(BaseModel):
@@ -252,6 +255,11 @@ def _validate_or_review(
     if not isinstance(account_state, dict):
         account_state = None
 
+    logger.info(
+        "request_id=%s step=citation_validation_started citations=%d",
+        state.get("request_id", "unknown"),
+        len(response.citations),
+    )
     try:
         validate_agent_response_citations(
             response,
@@ -259,6 +267,10 @@ def _validate_or_review(
             account_state,
         )
     except CitationValidationError:
+        logger.warning(
+            "request_id=%s step=citation_validation_failed",
+            state.get("request_id", "unknown"),
+        )
         if response.service_request is not None:
             raise
         return _review_response(
@@ -271,6 +283,10 @@ def _validate_or_review(
             }
         )
 
+    logger.info(
+        "request_id=%s step=citation_validation_completed status=valid",
+        state.get("request_id", "unknown"),
+    )
     return response
 
 
@@ -490,13 +506,27 @@ def generate_agent_response(
     )
 
     for attempt in range(2):
+        logger.info(
+            "request_id=%s step=response_draft_started attempt=%d",
+            state.get("request_id", "unknown"),
+            attempt + 1,
+        )
         attempt_prompt = prompt
         if attempt:
             attempt_prompt += (
                 "\nThe previous draft was invalid or referenced unavailable "
                 "evidence. Return only claims supported by exact evidence IDs."
             )
-        result = structured_model.invoke(attempt_prompt)
+        try:
+            result = structured_model.invoke(attempt_prompt)
+        except Exception as exc:
+            logger.error(
+                "request_id=%s step=response_draft_failed attempt=%d error_type=%s",
+                state.get("request_id", "unknown"),
+                attempt + 1,
+                type(exc).__name__,
+            )
+            raise
         try:
             if isinstance(result, DraftAnswer):
                 draft = result
@@ -546,8 +576,20 @@ def generate_agent_response(
                 account_state,
             )
         except (CitationValidationError, ValidationError):
+            logger.warning(
+                "request_id=%s step=response_draft_rejected attempt=%d",
+                state.get("request_id", "unknown"),
+                attempt + 1,
+            )
             continue
 
+        logger.info(
+            "request_id=%s step=response_draft_validated attempt=%d claims=%d citations=%d",
+            state.get("request_id", "unknown"),
+            attempt + 1,
+            len(claims),
+            len(citations),
+        )
         return response
 
     return _review_response(
