@@ -104,8 +104,6 @@ INFO:     127.0.0.1:52035 - "POST /chat HTTP/1.1" 200 OK// What is my card produ
 2026-11-04 11:40:59,683 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_generation_completed outcome=raise_request claims=1 citations=1
 2026-11-04 11:40:59,683 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_response outcome=raise_request citations=1
 
-
-
 // Can I get travel insurance added to my card?INFO:     Application startup complete.
 2026-11-04 12:03:39,959 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_received
 2026-11-04 12:03:39,969 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=intent_classification_started
@@ -123,6 +121,7 @@ INFO:     127.0.0.1:52035 - "POST /chat HTTP/1.1" 200 OK// What is my card produ
 2026-11-04 12:03:40,728 INFO app.agent.response request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=citation_validation_completed status=valid
 2026-11-04 12:03:40,728 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_generation_completed outcome=refuse claims=1 citations=1
 2026-11-04 12:03:40,729 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_response outcome=refuse citations=1
+
 // What is my card product? CUST-UNKNOWN
 INFO:     Application startup complete.
 2026-11-04 12:28:09,594 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_received
@@ -141,3 +140,29 @@ INFO:     Application startup complete.
 2026-11-04 12:28:10,626 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_generation_completed outcome=needs_review claims=0 citations=0
 2026-11-04 12:28:10,626 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_response outcome=needs_review citations=0
 INFO:     127.0.0.1:54474 - "POST /chat HTTP/1.1" 200 OK
+
+// What is my card monthly revolve rate?
+2026-11-05 16:07:14,655 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_received
+2026-11-05 16:07:14,662 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=intent_classification_started
+2026-11-05 16:07:15,204 INFO httpx HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-11-05 16:07:15,207 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=intent_classification_retry reason=invalid_structured_output attempt=2
+2026-11-05 16:07:15,446 INFO httpx HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-11-05 16:07:15,461 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=intent_classified intent=product_rate account_data_required=None prompt_injection_detected=False
+2026-11-05 16:07:15,461 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=workflow_routed next=policy_retrieval
+2026-11-05 16:07:15,463 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=policy_retrieval_started
+2026-11-05 16:07:15,720 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=policy_retrieval_completed results=17 document_ids=POL-CON-004,POL-CRD-001,POL-CRD-002,POL-CRD-003,POL-CRD-011,POL-FEE-007,POL-GOV-009,POL-KYC-008,POL-OPS-012,POL-PRD-010,POL-SVC-005,POL-SVC-006
+2026-11-05 16:07:15,720 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=evidence_assessment_completed required_documents=1 status=sufficient
+2026-11-05 16:07:15,720 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=workflow_routed next=account_lookup reason=account_data_required
+2026-11-05 16:07:15,721 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=account_lookup_started
+2026-11-05 16:07:16,128 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=account_lookup_completed account_data=loaded
+2026-11-05 16:07:16,128 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=workflow_routed next=policy_evaluation
+2026-11-05 16:07:16,130 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=policy_evaluation_skipped intent=product_rate
+2026-11-05 16:07:16,130 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=workflow_routed next=response_generation
+2026-11-05 16:07:16,130 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_generation_started
+2026-11-05 16:07:16,142 INFO app.agent.response request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_draft_started attempt=1
+2026-11-05 16:07:16,738 INFO httpx HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-11-05 16:07:16,749 INFO app.agent.response request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_draft_validated attempt=1 claims=1 citations=1
+2026-11-05 16:07:16,749 INFO app.agent.graph request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=response_generation_completed outcome=answer claims=1 citations=1
+2026-11-05 16:07:16,750 INFO app.api.routes request_id=3fa85f64-5717-4562-b3fc-2c963f66afa6 step=api_response outcome=answer citations=1
+INFO:     127.0.0.1:49545 - "POST /chat HTTP/1.1" 200 OK
+
